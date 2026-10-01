@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover,user-scalable=no" />
   <meta name="theme-color" content="#000000" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -16,6 +16,7 @@
     }
 
     * { box-sizing: border-box; }
+
     html, body {
       margin: 0;
       width: 100%;
@@ -27,6 +28,7 @@
       touch-action: manipulation;
       -webkit-user-select: none;
       user-select: none;
+      overscroll-behavior: none;
     }
 
     #app {
@@ -47,26 +49,23 @@
       background: #000;
     }
 
-    /*
-      キャラクター画像は常時表示。
-      縦横比を維持し、画像の中心を画面中央に固定したまま実寸50〜100%で拡大縮小する。UI上は0〜100に正規化して表示する。
-    */
+    /* キャラクター表示用レイヤー */
     #overlayWrap {
       position: absolute;
       inset: 0;
       pointer-events: none;
       overflow: hidden;
-      transform: scale(var(--overlay-scale, 1));
-      transform-origin: center center;
+      z-index: 8;
     }
 
     #overlay {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-      object-position: center center;
-      opacity: 1;
+      position: absolute;
       display: block;
+      opacity: 1;
+      pointer-events: none;
+      -webkit-user-drag: none;
+      user-select: none;
+      will-change: width, height, left, top;
     }
 
     #controls {
@@ -86,9 +85,14 @@
     .controls-header {
       display: flex;
       align-items: center;
-      justify-content: flex-end;
+      justify-content: space-between;
       min-height: 32px;
       margin-bottom: 6px;
+    }
+
+    .controls-title {
+      font-size: 13px;
+      font-weight: 800;
     }
 
     #toggleControls {
@@ -117,7 +121,8 @@
       margin-bottom: 0;
     }
 
-    #controls.minimized .row {
+    #controls.minimized .row,
+    #controls.minimized .controls-title {
       display: none;
     }
 
@@ -152,7 +157,6 @@
       display: flex;
       justify-content: center;
       align-items: center;
-      /* 透明なbottomBar領域が右下の「＋」を覆わないようにする */
       pointer-events: none;
     }
 
@@ -297,6 +301,7 @@
 
     <section id="controls" aria-label="キャラクター画像調整">
       <div class="controls-header">
+        <div class="controls-title">大きさ調整</div>
         <button id="toggleControls" type="button" aria-expanded="true" aria-controls="scaleRow" aria-label="調整ウィンドウを最小化">−</button>
       </div>
       <div id="scaleRow" class="row">
@@ -334,6 +339,7 @@
   <canvas id="canvas" hidden></canvas>
 
   <script>
+    const app = document.getElementById('app');
     const video = document.getElementById('camera');
     const overlayWrap = document.getElementById('overlayWrap');
     const overlay = document.getElementById('overlay');
@@ -356,19 +362,56 @@
     let stream = null;
     let capturedUrl = null;
     let capturedBlob = null;
+    let pinchState = null;
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
 
     function normalizedToScale(value) {
-      // UIの0〜100を、実際の表示倍率50〜100%（0.5〜1.0）へ変換する。
       return 0.5 + (Number(value) / 100) * 0.5;
     }
 
+    function scaleToNormalized(scale) {
+      return Math.round((clamp(scale, 0.5, 1.0) - 0.5) / 0.5 * 100);
+    }
+
+    function getOverlayRect(targetW, targetH) {
+      const imgW = overlay.naturalWidth || 1;
+      const imgH = overlay.naturalHeight || 1;
+      const baseScale = Math.min(targetW / imgW, targetH / imgH);
+      const userScale = normalizedToScale(scaleInput.value);
+      const drawW = imgW * baseScale * userScale;
+      const drawH = imgH * baseScale * userScale;
+      const x = (targetW - drawW) / 2;
+      const y = (targetH - drawH) / 2;
+      return { x, y, drawW, drawH };
+    }
+
+
     function updateOverlay() {
-      const scale = normalizedToScale(scaleInput.value);
-      overlayWrap.style.setProperty('--overlay-scale', scale);
+      if (!overlay.naturalWidth) {
+        scaleValue.textContent = scaleInput.value;
+        return;
+      }
+
+      const rect = app.getBoundingClientRect();
+      const overlayRect = getOverlayRect(rect.width, rect.height);
+      overlay.style.left = `${overlayRect.x}px`;
+      overlay.style.top = `${overlayRect.y}px`;
+      overlay.style.width = `${overlayRect.drawW}px`;
+      overlay.style.height = `${overlayRect.drawH}px`;
+
+
       scaleValue.textContent = scaleInput.value;
     }
 
     scaleInput.addEventListener('input', updateOverlay);
+    overlay.addEventListener('load', updateOverlay);
+    window.addEventListener('resize', updateOverlay);
+    if (window.ResizeObserver) {
+      new ResizeObserver(updateOverlay).observe(app);
+    }
 
     toggleControls.addEventListener('click', () => {
       const isMinimized = controls.classList.toggle('minimized');
@@ -378,6 +421,63 @@
         'aria-label',
         isMinimized ? '調整ウィンドウを最大化' : '調整ウィンドウを最小化'
       );
+    });
+
+    function getTouchDistance(t1, t2) {
+      const dx = t2.clientX - t1.clientX;
+      const dy = t2.clientY - t1.clientY;
+      return Math.hypot(dx, dy);
+    }
+
+    function canStartPinch(target) {
+      if (startScreen.style.display !== 'none') return false;
+      if (captureView.classList.contains('open')) return false;
+      if (target.closest('#controls')) return false;
+      if (target.closest('#bottomBar')) return false;
+      if (target.closest('#captureActions')) return false;
+      return true;
+    }
+
+    app.addEventListener('touchstart', (event) => {
+      if (event.touches.length === 2 && canStartPinch(event.target)) {
+        pinchState = {
+          startDistance: getTouchDistance(event.touches[0], event.touches[1]),
+          startScale: normalizedToScale(scaleInput.value)
+        };
+        event.preventDefault();
+      }
+    }, { passive: false });
+
+    app.addEventListener('touchmove', (event) => {
+      if (!pinchState || event.touches.length !== 2) return;
+
+      const distance = getTouchDistance(event.touches[0], event.touches[1]);
+      if (!distance || !pinchState.startDistance) return;
+
+      const nextScale = clamp(
+        pinchState.startScale * (distance / pinchState.startDistance),
+        0.5,
+        1.0
+      );
+
+      scaleInput.value = String(scaleToNormalized(nextScale));
+      updateOverlay();
+      event.preventDefault();
+    }, { passive: false });
+
+    function endPinchIfNeeded(event) {
+      if (event.touches && event.touches.length >= 2) return;
+      pinchState = null;
+    }
+
+    app.addEventListener('touchend', endPinchIfNeeded, { passive: true });
+    app.addEventListener('touchcancel', endPinchIfNeeded, { passive: true });
+
+    // iOS Safariのページ全体ズーム抑止
+    ['gesturestart', 'gesturechange', 'gestureend'].forEach((type) => {
+      document.addEventListener(type, (event) => {
+        event.preventDefault();
+      }, { passive: false });
     });
 
     async function stopCamera() {
@@ -409,6 +509,7 @@
         video.srcObject = stream;
         await video.play();
         startScreen.style.display = 'none';
+        updateOverlay();
       } catch (err) {
         console.error(err);
         errorEl.textContent = 'カメラを開始できません。ブラウザのカメラ許可と、GitHub Pages（HTTPS）で開いていることを確認してください。';
@@ -417,7 +518,6 @@
 
     startCameraBtn.addEventListener('click', startCamera);
 
-    // CSSの object-fit: cover と同じ見え方になるよう、動画の中央を切り出す。
     function drawVideoCover(ctx, targetW, targetH) {
       const vw = video.videoWidth;
       const vh = video.videoHeight;
@@ -439,22 +539,14 @@
       return true;
     }
 
-    // 画面上に見えているキャラクター画像と同じ「contain + 画面中央基準 + 拡大率」で必ず合成する。
+
     function drawOverlayContainCenter(ctx, targetW, targetH) {
       if (!overlay.complete || !overlay.naturalWidth) return;
 
-      const imgW = overlay.naturalWidth;
-      const imgH = overlay.naturalHeight;
-      const baseScale = Math.min(targetW / imgW, targetH / imgH);
-      const userScale = normalizedToScale(scaleInput.value);
-      const drawW = imgW * baseScale * userScale;
-      const drawH = imgH * baseScale * userScale;
-      const x = (targetW - drawW) / 2;
-      const y = (targetH - drawH) / 2;
-
+      const overlayRect = getOverlayRect(targetW, targetH);
       ctx.save();
       ctx.globalAlpha = 1.0;
-      ctx.drawImage(overlay, x, y, drawW, drawH);
+      ctx.drawImage(overlay, overlayRect.x, overlayRect.y, overlayRect.drawW, overlayRect.drawH);
       ctx.restore();
     }
 
@@ -467,7 +559,7 @@
     shutter.addEventListener('click', () => {
       if (!stream || !video.videoWidth) return;
 
-      const rect = document.getElementById('app').getBoundingClientRect();
+      const rect = app.getBoundingClientRect();
       const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
       const w = Math.max(1, Math.round(rect.width * dpr));
       const h = Math.max(1, Math.round(rect.height * dpr));
@@ -479,7 +571,6 @@
 
       if (!drawVideoCover(ctx, w, h)) return;
 
-      // キャラクター画像は常に撮影画像へ合成する。
       drawOverlayContainCenter(ctx, w, h);
       flashScreen();
 
@@ -497,7 +588,6 @@
       captureView.classList.remove('open');
     });
 
-    // ダウンロードリンクは使わず、スマホ標準の共有／写真保存画面を開く。
     shareCapture.addEventListener('click', async () => {
       if (!capturedBlob) return;
 
