@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover,user-scalable=no" />
   <meta name="theme-color" content="#000000" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -16,6 +16,7 @@
     }
 
     * { box-sizing: border-box; }
+
     html, body {
       margin: 0;
       width: 100%;
@@ -27,6 +28,7 @@
       touch-action: manipulation;
       -webkit-user-select: none;
       user-select: none;
+      overscroll-behavior: none;
     }
 
     #app {
@@ -47,26 +49,33 @@
       background: #000;
     }
 
-    /*
-      キャラクター画像は常時表示。
-      縦横比を維持し、画像の中心を画面中央に固定したまま実寸50〜100%で拡大縮小する。UI上は0〜100に正規化して表示する。
-    */
+    /* キャラクター表示用レイヤー */
     #overlayWrap {
       position: absolute;
       inset: 0;
       pointer-events: none;
       overflow: hidden;
-      transform: scale(var(--overlay-scale, 1));
-      transform-origin: center center;
+      z-index: 8;
+    }
+
+    #overlayShadow {
+      position: absolute;
+      border-radius: 50%;
+      background: rgba(0, 0, 0, 0.33);
+      filter: blur(14px);
+      transform: translate(-50%, -50%);
+      opacity: 0.88;
+      will-change: width, height, left, top;
     }
 
     #overlay {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-      object-position: center center;
-      opacity: 1;
+      position: absolute;
       display: block;
+      opacity: 1;
+      pointer-events: none;
+      -webkit-user-drag: none;
+      user-select: none;
+      will-change: width, height, left, top;
     }
 
     #controls {
@@ -152,7 +161,6 @@
       display: flex;
       justify-content: center;
       align-items: center;
-      /* 透明なbottomBar領域が右下の「＋」を覆わないようにする */
       pointer-events: none;
     }
 
@@ -292,6 +300,7 @@
     <video id="camera" autoplay playsinline muted></video>
 
     <div id="overlayWrap" aria-hidden="true">
+      <div id="overlayShadow"></div>
       <img id="overlay" src="chara_overlay.png" alt="" draggable="false" />
     </div>
 
@@ -334,8 +343,10 @@
   <canvas id="canvas" hidden></canvas>
 
   <script>
+    const app = document.getElementById('app');
     const video = document.getElementById('camera');
     const overlayWrap = document.getElementById('overlayWrap');
+    const overlayShadow = document.getElementById('overlayShadow');
     const overlay = document.getElementById('overlay');
     const startScreen = document.getElementById('startScreen');
     const startCameraBtn = document.getElementById('startCamera');
@@ -356,19 +367,70 @@
     let stream = null;
     let capturedUrl = null;
     let capturedBlob = null;
+    let pinchState = null;
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
 
     function normalizedToScale(value) {
-      // UIの0〜100を、実際の表示倍率50〜100%（0.5〜1.0）へ変換する。
       return 0.5 + (Number(value) / 100) * 0.5;
     }
 
+    function scaleToNormalized(scale) {
+      return Math.round((clamp(scale, 0.5, 1.0) - 0.5) / 0.5 * 100);
+    }
+
+    function getOverlayRect(targetW, targetH) {
+      const imgW = overlay.naturalWidth || 1;
+      const imgH = overlay.naturalHeight || 1;
+      const baseScale = Math.min(targetW / imgW, targetH / imgH);
+      const userScale = normalizedToScale(scaleInput.value);
+      const drawW = imgW * baseScale * userScale;
+      const drawH = imgH * baseScale * userScale;
+      const x = (targetW - drawW) / 2;
+      const y = (targetH - drawH) / 2;
+      return { x, y, drawW, drawH };
+    }
+
+    function getShadowRect(overlayRect) {
+      const { x, y, drawW, drawH } = overlayRect;
+      const shadowW = drawW * 0.34;
+      const shadowH = drawW * 0.085;
+      const centerX = x + drawW * 0.46;
+      const centerY = y + drawH * 0.955;
+      return { centerX, centerY, shadowW, shadowH };
+    }
+
     function updateOverlay() {
-      const scale = normalizedToScale(scaleInput.value);
-      overlayWrap.style.setProperty('--overlay-scale', scale);
+      if (!overlay.naturalWidth) {
+        scaleValue.textContent = scaleInput.value;
+        return;
+      }
+
+      const rect = app.getBoundingClientRect();
+      const overlayRect = getOverlayRect(rect.width, rect.height);
+      const shadowRect = getShadowRect(overlayRect);
+
+      overlay.style.left = `${overlayRect.x}px`;
+      overlay.style.top = `${overlayRect.y}px`;
+      overlay.style.width = `${overlayRect.drawW}px`;
+      overlay.style.height = `${overlayRect.drawH}px`;
+
+      overlayShadow.style.left = `${shadowRect.centerX}px`;
+      overlayShadow.style.top = `${shadowRect.centerY}px`;
+      overlayShadow.style.width = `${shadowRect.shadowW}px`;
+      overlayShadow.style.height = `${shadowRect.shadowH}px`;
+
       scaleValue.textContent = scaleInput.value;
     }
 
     scaleInput.addEventListener('input', updateOverlay);
+    overlay.addEventListener('load', updateOverlay);
+    window.addEventListener('resize', updateOverlay);
+    if (window.ResizeObserver) {
+      new ResizeObserver(updateOverlay).observe(app);
+    }
 
     toggleControls.addEventListener('click', () => {
       const isMinimized = controls.classList.toggle('minimized');
@@ -378,6 +440,63 @@
         'aria-label',
         isMinimized ? '調整ウィンドウを最大化' : '調整ウィンドウを最小化'
       );
+    });
+
+    function getTouchDistance(t1, t2) {
+      const dx = t2.clientX - t1.clientX;
+      const dy = t2.clientY - t1.clientY;
+      return Math.hypot(dx, dy);
+    }
+
+    function canStartPinch(target) {
+      if (startScreen.style.display !== 'none') return false;
+      if (captureView.classList.contains('open')) return false;
+      if (target.closest('#controls')) return false;
+      if (target.closest('#bottomBar')) return false;
+      if (target.closest('#captureActions')) return false;
+      return true;
+    }
+
+    app.addEventListener('touchstart', (event) => {
+      if (event.touches.length === 2 && canStartPinch(event.target)) {
+        pinchState = {
+          startDistance: getTouchDistance(event.touches[0], event.touches[1]),
+          startScale: normalizedToScale(scaleInput.value)
+        };
+        event.preventDefault();
+      }
+    }, { passive: false });
+
+    app.addEventListener('touchmove', (event) => {
+      if (!pinchState || event.touches.length !== 2) return;
+
+      const distance = getTouchDistance(event.touches[0], event.touches[1]);
+      if (!distance || !pinchState.startDistance) return;
+
+      const nextScale = clamp(
+        pinchState.startScale * (distance / pinchState.startDistance),
+        0.5,
+        1.0
+      );
+
+      scaleInput.value = String(scaleToNormalized(nextScale));
+      updateOverlay();
+      event.preventDefault();
+    }, { passive: false });
+
+    function endPinchIfNeeded(event) {
+      if (event.touches && event.touches.length >= 2) return;
+      pinchState = null;
+    }
+
+    app.addEventListener('touchend', endPinchIfNeeded, { passive: true });
+    app.addEventListener('touchcancel', endPinchIfNeeded, { passive: true });
+
+    // iOS Safariのページ全体ズーム抑止
+    ['gesturestart', 'gesturechange', 'gestureend'].forEach((type) => {
+      document.addEventListener(type, (event) => {
+        event.preventDefault();
+      }, { passive: false });
     });
 
     async function stopCamera() {
@@ -409,6 +528,7 @@
         video.srcObject = stream;
         await video.play();
         startScreen.style.display = 'none';
+        updateOverlay();
       } catch (err) {
         console.error(err);
         errorEl.textContent = 'カメラを開始できません。ブラウザのカメラ許可と、GitHub Pages（HTTPS）で開いていることを確認してください。';
@@ -417,7 +537,6 @@
 
     startCameraBtn.addEventListener('click', startCamera);
 
-    // CSSの object-fit: cover と同じ見え方になるよう、動画の中央を切り出す。
     function drawVideoCover(ctx, targetW, targetH) {
       const vw = video.videoWidth;
       const vh = video.videoHeight;
@@ -439,22 +558,30 @@
       return true;
     }
 
-    // 画面上に見えているキャラクター画像と同じ「contain + 画面中央基準 + 拡大率」で必ず合成する。
+    function drawCharacterShadow(ctx, targetW, targetH) {
+      if (!overlay.complete || !overlay.naturalWidth) return;
+
+      const shadowRect = getShadowRect(getOverlayRect(targetW, targetH));
+      const rx = shadowRect.shadowW / 2;
+      const ry = shadowRect.shadowH / 2;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(shadowRect.centerX, shadowRect.centerY, rx, ry, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,0,0,0.28)';
+      ctx.shadowColor = 'rgba(0,0,0,0.42)';
+      ctx.shadowBlur = Math.max(10, shadowRect.shadowH * 0.8);
+      ctx.fill();
+      ctx.restore();
+    }
+
     function drawOverlayContainCenter(ctx, targetW, targetH) {
       if (!overlay.complete || !overlay.naturalWidth) return;
 
-      const imgW = overlay.naturalWidth;
-      const imgH = overlay.naturalHeight;
-      const baseScale = Math.min(targetW / imgW, targetH / imgH);
-      const userScale = normalizedToScale(scaleInput.value);
-      const drawW = imgW * baseScale * userScale;
-      const drawH = imgH * baseScale * userScale;
-      const x = (targetW - drawW) / 2;
-      const y = (targetH - drawH) / 2;
-
+      const overlayRect = getOverlayRect(targetW, targetH);
       ctx.save();
       ctx.globalAlpha = 1.0;
-      ctx.drawImage(overlay, x, y, drawW, drawH);
+      ctx.drawImage(overlay, overlayRect.x, overlayRect.y, overlayRect.drawW, overlayRect.drawH);
       ctx.restore();
     }
 
@@ -467,7 +594,7 @@
     shutter.addEventListener('click', () => {
       if (!stream || !video.videoWidth) return;
 
-      const rect = document.getElementById('app').getBoundingClientRect();
+      const rect = app.getBoundingClientRect();
       const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
       const w = Math.max(1, Math.round(rect.width * dpr));
       const h = Math.max(1, Math.round(rect.height * dpr));
@@ -479,7 +606,7 @@
 
       if (!drawVideoCover(ctx, w, h)) return;
 
-      // キャラクター画像は常に撮影画像へ合成する。
+      drawCharacterShadow(ctx, w, h);
       drawOverlayContainCenter(ctx, w, h);
       flashScreen();
 
@@ -497,7 +624,6 @@
       captureView.classList.remove('open');
     });
 
-    // ダウンロードリンクは使わず、スマホ標準の共有／写真保存画面を開く。
     shareCapture.addEventListener('click', async () => {
       if (!capturedBlob) return;
 
