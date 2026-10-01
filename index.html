@@ -152,9 +152,12 @@
       display: flex;
       justify-content: center;
       align-items: center;
+      /* 透明なbottomBar領域が右下の「＋」を覆わないようにする */
+      pointer-events: none;
     }
 
     #shutter {
+      pointer-events: auto;
       width: 72px;
       height: 72px;
       border-radius: 50%;
