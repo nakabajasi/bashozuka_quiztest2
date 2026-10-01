@@ -49,7 +49,7 @@
 
     /*
       キャラクター画像は常時表示。
-      縦横比を維持し、画像の中心を画面中央に固定したまま100〜200%で拡大する。
+      縦横比を維持し、画像の中心を画面中央に固定したまま実寸50〜100%で拡大縮小する。UI上は0〜100に正規化して表示する。
     */
     #overlayWrap {
       position: absolute;
@@ -257,8 +257,8 @@
     <section id="controls" aria-label="キャラクター画像調整">
       <div class="row">
         <label for="scale">大きさ</label>
-        <input id="scale" type="range" min="100" max="200" value="100" />
-        <div id="scaleValue" class="value">100%</div>
+        <input id="scale" type="range" min="0" max="100" value="100" />
+        <div id="scaleValue" class="value">100</div>
       </div>
     </section>
 
@@ -311,10 +311,15 @@
     let capturedUrl = null;
     let capturedBlob = null;
 
+    function normalizedToScale(value) {
+      // UIの0〜100を、実際の表示倍率50〜100%（0.5〜1.0）へ変換する。
+      return 0.5 + (Number(value) / 100) * 0.5;
+    }
+
     function updateOverlay() {
-      const scale = Number(scaleInput.value) / 100;
+      const scale = normalizedToScale(scaleInput.value);
       overlayWrap.style.setProperty('--overlay-scale', scale);
-      scaleValue.textContent = `${scaleInput.value}%`;
+      scaleValue.textContent = scaleInput.value;
     }
 
     scaleInput.addEventListener('input', updateOverlay);
@@ -385,7 +390,7 @@
       const imgW = overlay.naturalWidth;
       const imgH = overlay.naturalHeight;
       const baseScale = Math.min(targetW / imgW, targetH / imgH);
-      const userScale = Number(scaleInput.value) / 100;
+      const userScale = normalizedToScale(scaleInput.value);
       const drawW = imgW * baseScale * userScale;
       const drawH = imgH * baseScale * userScale;
       const x = (targetW - drawW) / 2;
