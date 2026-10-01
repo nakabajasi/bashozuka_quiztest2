@@ -391,7 +391,7 @@
 
     function updateOverlay() {
       if (!overlay.naturalWidth) {
-        scaleValue.textContent = scaleInput.value;
+        scaleValue.textContent = '100';
         return;
       }
 
@@ -403,7 +403,7 @@
       overlay.style.height = `${overlayRect.drawH}px`;
 
 
-      scaleValue.textContent = scaleInput.value;
+      scaleValue.textContent = '100';
     }
 
     scaleInput.addEventListener('input', updateOverlay);
