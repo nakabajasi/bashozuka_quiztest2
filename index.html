@@ -69,23 +69,6 @@
       display: block;
     }
 
-    #toggleControls {
-      position: absolute;
-      top: calc(var(--safe-top) + 12px);
-      right: calc(var(--safe-right) + 12px);
-      z-index: 30;
-      min-height: 40px;
-      padding: 0 14px;
-      border: 1px solid rgba(255,255,255,.25);
-      border-radius: 999px;
-      background: rgba(0,0,0,.62);
-      color: #fff;
-      font-size: 13px;
-      font-weight: 800;
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-    }
-
     #controls {
       position: absolute;
       left: calc(var(--safe-left) + 12px);
@@ -100,7 +83,45 @@
       -webkit-backdrop-filter: blur(10px);
     }
 
-    #controls.hidden {
+    .controls-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-height: 32px;
+      margin-bottom: 6px;
+    }
+
+    .controls-title {
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    #toggleControls {
+      flex: 0 0 auto;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      border: 1px solid rgba(255,255,255,.25);
+      border-radius: 8px;
+      background: rgba(255,255,255,.10);
+      color: #fff;
+      font-size: 20px;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    #controls.minimized {
+      left: auto;
+      width: min(180px, calc(100vw - var(--safe-left) - var(--safe-right) - 24px));
+      padding: 8px 10px;
+    }
+
+    #controls.minimized .controls-header {
+      margin-bottom: 0;
+    }
+
+    #controls.minimized .row {
       display: none;
     }
 
@@ -275,10 +296,12 @@
       <img id="overlay" src="chara_overlay.png" alt="" draggable="false" />
     </div>
 
-    <button id="toggleControls" type="button" aria-expanded="true" aria-controls="controls">調整を隠す</button>
-
     <section id="controls" aria-label="キャラクター画像調整">
-      <div class="row">
+      <div class="controls-header">
+        <div class="controls-title">大きさ調整</div>
+        <button id="toggleControls" type="button" aria-expanded="true" aria-controls="scaleRow" aria-label="調整ウィンドウを最小化">−</button>
+      </div>
+      <div id="scaleRow" class="row">
         <label for="scale">大きさ</label>
         <input id="scale" type="range" min="0" max="100" value="100" />
         <div id="scaleValue" class="value">100</div>
@@ -350,9 +373,13 @@
     scaleInput.addEventListener('input', updateOverlay);
 
     toggleControls.addEventListener('click', () => {
-      const isHidden = controls.classList.toggle('hidden');
-      toggleControls.textContent = isHidden ? '調整を表示' : '調整を隠す';
-      toggleControls.setAttribute('aria-expanded', String(!isHidden));
+      const isMinimized = controls.classList.toggle('minimized');
+      toggleControls.textContent = isMinimized ? '+' : '−';
+      toggleControls.setAttribute('aria-expanded', String(!isMinimized));
+      toggleControls.setAttribute(
+        'aria-label',
+        isMinimized ? '調整ウィンドウを最大化' : '調整ウィンドウを最小化'
+      );
     });
 
     async function stopCamera() {
