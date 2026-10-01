@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>芭蕉塚古墳 首長記念撮影カメラ</title>
+  <style>
+    :root {
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-right: env(safe-area-inset-right, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left: env(safe-area-inset-left, 0px);
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #fff;
+      touch-action: manipulation;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    #app {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100dvh;
+      overflow: hidden;
+      background: #000;
+    }
+
+    #camera {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      background: #000;
+    }
+
+    /*
+      キャラクター画像は常時表示。
+      縦横比を維持し、画像の中心を画面中央に固定したまま100〜200%で拡大する。
+    */
+    #overlayWrap {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+      transform: scale(var(--overlay-scale, 1));
+      transform-origin: center center;
+    }
+
+    #overlay {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      object-position: center center;
+      opacity: 1;
+      display: block;
+    }
+
+    #controls {
+      position: absolute;
+      left: calc(var(--safe-left) + 12px);
+      right: calc(var(--safe-right) + 12px);
+      bottom: calc(var(--safe-bottom) + 96px);
+      z-index: 20;
+      background: rgba(0,0,0,.62);
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 16px;
+      padding: 12px;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 72px 1fr 52px;
+      align-items: center;
+      gap: 8px;
+      min-height: 40px;
+    }
+
+    .row label {
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    input[type="range"] { width: 100%; }
+
+    .value {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      font-size: 13px;
+      opacity: .95;
+    }
+
+    #bottomBar {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: calc(var(--safe-bottom) + 12px);
+      z-index: 25;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    #shutter {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: #fff;
+      border: 5px solid rgba(255,255,255,.45);
+      box-shadow: 0 0 0 3px rgba(0,0,0,.32) inset;
+    }
+
+    #startScreen {
+      position: absolute;
+      inset: 0;
+      z-index: 50;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: #000;
+    }
+
+    #startCard {
+      width: min(92vw, 420px);
+      text-align: center;
+    }
+
+    #missionText {
+      margin: 0 0 24px;
+      text-align: center;
+      font-size: 18px;
+      line-height: 1.7;
+      font-weight: 800;
+    }
+
+    #cameraConfirm {
+      margin: 0 0 12px;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    #startCamera {
+      width: 100%;
+      min-height: 52px;
+      border: 0;
+      border-radius: 14px;
+      background: #fff;
+      color: #000;
+      font-size: 16px;
+      font-weight: 800;
+    }
+
+    #error {
+      margin-top: 14px;
+      min-height: 20px;
+      color: #ffb4b4;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    #captureView {
+      position: absolute;
+      inset: 0;
+      z-index: 80;
+      display: none;
+      background: #000;
+    }
+
+    #captureView.open { display: block; }
+
+    #capturedImage {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+      -webkit-user-select: auto;
+      user-select: auto;
+      -webkit-touch-callout: default;
+    }
+
+    #captureHint {
+      position: absolute;
+      top: calc(var(--safe-top) + 12px);
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(0,0,0,.65);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    #captureActions {
+      position: absolute;
+      left: calc(var(--safe-left) + 12px);
+      right: calc(var(--safe-right) + 12px);
+      bottom: calc(var(--safe-bottom) + 12px);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    #captureActions button {
+      min-height: 48px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,.22);
+      background: rgba(0,0,0,.68);
+      color: #fff;
+      font-weight: 800;
+      font-size: 14px;
+    }
+
+    #flash {
+      position: absolute;
+      inset: 0;
+      background: #fff;
+      z-index: 70;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #flash.on { animation: flash .18s ease-out; }
+    @keyframes flash {
+      0% { opacity: .9; }
+      100% { opacity: 0; }
+    }
+
+    @media (orientation: landscape) {
+      #controls { bottom: calc(var(--safe-bottom) + 84px); }
+      #shutter { width: 62px; height: 62px; }
+    }
+  </style>
+</head>
+<body>
+  <main id="app">
+    <video id="camera" autoplay playsinline muted></video>
+
+    <div id="overlayWrap" aria-hidden="true">
+      <img id="overlay" src="chara_overlay.png" alt="" draggable="false" />
+    </div>
+
+    <section id="controls" aria-label="キャラクター画像調整">
+      <div class="row">
+        <label for="scale">大きさ</label>
+        <input id="scale" type="range" min="100" max="200" value="100" />
+        <div id="scaleValue" class="value">100%</div>
+      </div>
+    </section>
+
+    <div id="bottomBar">
+      <button id="shutter" type="button" aria-label="撮影"></button>
+    </div>
+
+    <div id="flash"></div>
+
+    <section id="startScreen">
+      <div id="startCard">
+        <p id="missionText">ミッション：<br>芭蕉塚古墳の首長と後円部で記念撮影しよう！</p>
+        <p id="cameraConfirm">カメラを起動しますか？</p>
+        <button id="startCamera" type="button">カメラを起動する</button>
+        <div id="error" role="alert"></div>
+      </div>
+    </section>
+
+    <section id="captureView" aria-label="撮影結果">
+      <img id="capturedImage" alt="撮影結果" />
+      <div id="captureHint">首長と一緒に撮影しました</div>
+      <div id="captureActions">
+        <button id="closeCapture" type="button">撮り直す</button>
+        <button id="shareCapture" type="button">写真に保存</button>
+      </div>
+    </section>
+  </main>
+
+  <canvas id="canvas" hidden></canvas>
+
+  <script>
+    const video = document.getElementById('camera');
+    const overlayWrap = document.getElementById('overlayWrap');
+    const overlay = document.getElementById('overlay');
+    const startScreen = document.getElementById('startScreen');
+    const startCameraBtn = document.getElementById('startCamera');
+    const errorEl = document.getElementById('error');
+    const shutter = document.getElementById('shutter');
+    const flash = document.getElementById('flash');
+    const canvas = document.getElementById('canvas');
+    const captureView = document.getElementById('captureView');
+    const capturedImage = document.getElementById('capturedImage');
+    const closeCapture = document.getElementById('closeCapture');
+    const shareCapture = document.getElementById('shareCapture');
+    const captureHint = document.getElementById('captureHint');
+    const scaleInput = document.getElementById('scale');
+    const scaleValue = document.getElementById('scaleValue');
+
+    let stream = null;
+    let capturedUrl = null;
+    let capturedBlob = null;
+
+    function updateOverlay() {
+      const scale = Number(scaleInput.value) / 100;
+      overlayWrap.style.setProperty('--overlay-scale', scale);
+      scaleValue.textContent = `${scaleInput.value}%`;
+    }
+
+    scaleInput.addEventListener('input', updateOverlay);
+
+    async function stopCamera() {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+      }
+    }
+
+    async function startCamera() {
+      errorEl.textContent = '';
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        errorEl.textContent = 'このブラウザはカメラAPIに対応していません。Safari / Chrome の最新版で開いてください。';
+        return;
+      }
+
+      await stopCamera();
+
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          }
+        });
+
+        video.srcObject = stream;
+        await video.play();
+        startScreen.style.display = 'none';
+      } catch (err) {
+        console.error(err);
+        errorEl.textContent = 'カメラを開始できません。ブラウザのカメラ許可と、GitHub Pages（HTTPS）で開いていることを確認してください。';
+      }
+    }
+
+    startCameraBtn.addEventListener('click', startCamera);
+
+    // CSSの object-fit: cover と同じ見え方になるよう、動画の中央を切り出す。
+    function drawVideoCover(ctx, targetW, targetH) {
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      if (!vw || !vh) return false;
+
+      const srcRatio = vw / vh;
+      const dstRatio = targetW / targetH;
+      let sx = 0, sy = 0, sw = vw, sh = vh;
+
+      if (srcRatio > dstRatio) {
+        sw = vh * dstRatio;
+        sx = (vw - sw) / 2;
+      } else {
+        sh = vw / dstRatio;
+        sy = (vh - sh) / 2;
+      }
+
+      ctx.drawImage(video, sx, sy, sw, sh, 0, 0, targetW, targetH);
+      return true;
+    }
+
+    // 画面上に見えているキャラクター画像と同じ「contain + 画面中央基準 + 拡大率」で必ず合成する。
+    function drawOverlayContainCenter(ctx, targetW, targetH) {
+      if (!overlay.complete || !overlay.naturalWidth) return;
+
+      const imgW = overlay.naturalWidth;
+      const imgH = overlay.naturalHeight;
+      const baseScale = Math.min(targetW / imgW, targetH / imgH);
+      const userScale = Number(scaleInput.value) / 100;
+      const drawW = imgW * baseScale * userScale;
+      const drawH = imgH * baseScale * userScale;
+      const x = (targetW - drawW) / 2;
+      const y = (targetH - drawH) / 2;
+
+      ctx.save();
+      ctx.globalAlpha = 1.0;
+      ctx.drawImage(overlay, x, y, drawW, drawH);
+      ctx.restore();
+    }
+
+    function flashScreen() {
+      flash.classList.remove('on');
+      void flash.offsetWidth;
+      flash.classList.add('on');
+    }
+
+    shutter.addEventListener('click', () => {
+      if (!stream || !video.videoWidth) return;
+
+      const rect = document.getElementById('app').getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+      const w = Math.max(1, Math.round(rect.width * dpr));
+      const h = Math.max(1, Math.round(rect.height * dpr));
+
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, w, h);
+
+      if (!drawVideoCover(ctx, w, h)) return;
+
+      // キャラクター画像は常に撮影画像へ合成する。
+      drawOverlayContainCenter(ctx, w, h);
+      flashScreen();
+
+      canvas.toBlob(blob => {
+        if (!blob) return;
+        capturedBlob = blob;
+        if (capturedUrl) URL.revokeObjectURL(capturedUrl);
+        capturedUrl = URL.createObjectURL(blob);
+        capturedImage.src = capturedUrl;
+        captureView.classList.add('open');
+      }, 'image/jpeg', 0.95);
+    });
+
+    closeCapture.addEventListener('click', () => {
+      captureView.classList.remove('open');
+    });
+
+    // ダウンロードリンクは使わず、スマホ標準の共有／写真保存画面を開く。
+    shareCapture.addEventListener('click', async () => {
+      if (!capturedBlob) return;
+
+      const file = new File(
+        [capturedBlob],
+        `bashozuka_chief_${new Date().toISOString().replace(/[:.]/g, '-').slice(0,19)}.jpg`,
+        { type: 'image/jpeg' }
+      );
+
+      try {
+        if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
+          await navigator.share({ files: [file], title: '芭蕉塚古墳' });
+        } else {
+          captureHint.textContent = 'この端末では、画像を長押しして写真に保存してください';
+        }
+      } catch (err) {
+        if (err && err.name !== 'AbortError') {
+          console.error(err);
+          captureHint.textContent = '画像を長押しして写真に保存してください';
+        }
+      }
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && stream) {
+        video.play().catch(() => {});
+      }
+    });
+
+    window.addEventListener('beforeunload', stopCamera);
+    updateOverlay();
+  </script>
+</body>
+</html>
