@@ -86,15 +86,9 @@
     .controls-header {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 10px;
+      justify-content: flex-end;
       min-height: 32px;
       margin-bottom: 6px;
-    }
-
-    .controls-title {
-      font-size: 13px;
-      font-weight: 800;
     }
 
     #toggleControls {
@@ -113,8 +107,10 @@
 
     #controls.minimized {
       left: auto;
-      width: min(180px, calc(100vw - var(--safe-left) - var(--safe-right) - 24px));
-      padding: 8px 10px;
+      right: calc(var(--safe-right) + 12px);
+      bottom: calc(var(--safe-bottom) + 12px);
+      width: auto;
+      padding: 8px;
     }
 
     #controls.minimized .controls-header {
@@ -127,7 +123,7 @@
 
     .row {
       display: grid;
-      grid-template-columns: 72px 1fr 52px;
+      grid-template-columns: 28px 1fr 44px;
       align-items: center;
       gap: 8px;
       min-height: 40px;
@@ -298,11 +294,10 @@
 
     <section id="controls" aria-label="キャラクター画像調整">
       <div class="controls-header">
-        <div class="controls-title">大きさ調整</div>
         <button id="toggleControls" type="button" aria-expanded="true" aria-controls="scaleRow" aria-label="調整ウィンドウを最小化">−</button>
       </div>
       <div id="scaleRow" class="row">
-        <label for="scale">大きさ</label>
+        <label for="scale">0</label>
         <input id="scale" type="range" min="0" max="100" value="100" />
         <div id="scaleValue" class="value">100</div>
       </div>
